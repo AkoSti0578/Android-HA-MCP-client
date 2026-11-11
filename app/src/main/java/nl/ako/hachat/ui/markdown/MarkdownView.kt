@@ -24,6 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -89,37 +93,65 @@ private fun MdBlockView(block: MdBlock) {
 @Composable
 private fun TableView(table: MdBlock.Table) {
     val border = MaterialTheme.colorScheme.outlineVariant
+    val headerBg = MaterialTheme.colorScheme.surfaceContainerHigh
+    val cols = table.header.size
+    val rows = listOf(table.header) + table.rows
     Box(
         Modifier
             .clip(RoundedCornerShape(8.dp))
             .border(1.dp, border, RoundedCornerShape(8.dp))
             .horizontalScroll(rememberScrollState()),
     ) {
-        Column {
-            TableRow(table.header, table.alignments, header = true)
-            table.rows.forEach { row ->
-                HorizontalDivider(color = border)
-                TableRow(row, table.alignments, header = false)
+        // Eigen layout: kolombreedte = breedste cel in die kolom (over alle rijen), rijhoogte = hoogste cel.
+        Layout(
+            content = {
+                rows.forEachIndexed { r, row ->
+                    row.forEachIndexed { c, cell ->
+                        Box(
+                            Modifier
+                                .background(if (r == 0) headerBg else Color.Transparent)
+                                .drawBehind {
+                                    if (r < rows.lastIndex) drawLine(border, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                inline(cell),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (r == 0) FontWeight.SemiBold else FontWeight.Normal),
+                                textAlign = when (table.alignments.getOrNull(c)) {
+                                    MdBlock.Align.CENTER -> TextAlign.Center
+                                    MdBlock.Align.END -> TextAlign.End
+                                    else -> TextAlign.Start
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+            },
+        ) { measurables, _ ->
+            val maxCell = 260.dp.roundToPx()
+            val minCell = 48.dp.roundToPx()
+            val widths = IntArray(cols) { c ->
+                rows.indices.maxOf { r -> measurables[r * cols + c].maxIntrinsicWidth(Int.MAX_VALUE) }.coerceIn(minCell, maxCell)
             }
-        }
-    }
-}
-
-@Composable
-private fun TableRow(cells: List<String>, aligns: List<MdBlock.Align>, header: Boolean) {
-    val bg = if (header) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent
-    Row(Modifier.background(bg)) {
-        cells.forEachIndexed { i, c ->
-            Text(
-                inline(c),
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal),
-                textAlign = when (aligns.getOrNull(i)) {
-                    MdBlock.Align.CENTER -> TextAlign.Center
-                    MdBlock.Align.END -> TextAlign.End
-                    else -> TextAlign.Start
-                },
-                modifier = Modifier.widthIn(min = 72.dp, max = 260.dp).padding(horizontal = 10.dp, vertical = 6.dp),
-            )
+            val heights = IntArray(rows.size) { r ->
+                (0 until cols).maxOf { c -> measurables[r * cols + c].minIntrinsicHeight(widths[c]) }
+            }
+            val placeables = measurables.mapIndexed { i, m ->
+                val r = i / cols; val c = i % cols
+                m.measure(Constraints.fixed(widths[c], heights[r]))
+            }
+            layout(widths.sum(), heights.sum()) {
+                var y = 0
+                for (r in rows.indices) {
+                    var x = 0
+                    for (c in 0 until cols) {
+                        placeables[r * cols + c].place(x, y); x += widths[c]
+                    }
+                    y += heights[r]
+                }
+            }
         }
     }
 }

@@ -90,12 +90,24 @@ import java.util.Date
 fun ChatScreen(onOpenSettings: () -> Unit, vm: ChatViewModel = hiltViewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     val input by vm.input.collectAsStateWithLifecycle()
-    val drawer = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    var confirmDelete by remember { mutableStateOf<ConversationEntity?>(null) }
-
     LaunchedEffect(Unit) { vm.events.collect { snackbar.showSnackbar(it) } }
+    ChatContent(state, input, vm, snackbar, onOpenSettings)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatContent(
+    state: ChatUiState,
+    input: String,
+    vm: ChatActions,
+    snackbar: SnackbarHostState,
+    onOpenSettings: () -> Unit,
+    drawerInitiallyOpen: Boolean = false,
+) {
+    val drawer = rememberDrawerState(if (drawerInitiallyOpen) DrawerValue.Open else DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    var confirmDelete by remember { mutableStateOf<ConversationEntity?>(null) }
 
     confirmDelete?.let { c ->
         AlertDialog(
@@ -162,7 +174,8 @@ fun ChatScreen(onOpenSettings: () -> Unit, vm: ChatViewModel = hiltViewModel()) 
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        items(state.items, key = { it.key }) { item -> ChatItemView(item, state.canRetry && item == state.items.lastOrNull(), vm::retry) }
+                        val retryKey = if (state.canRetry) state.items.lastOrNull { it is ChatItem.NoticeItem && it.kind == Notice.Kind.ERROR }?.key else null
+                        items(state.items, key = { it.key }) { item -> ChatItemView(item, item.key == retryKey, vm::retry) }
                         state.pending?.let { p ->
                             item(key = "approval-${p.call.id}") {
                                 ApprovalCard(p.call.mcpName, p.call.input, onApprove = { vm.approve(true) }, onReject = { vm.approve(false) })
@@ -177,7 +190,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, vm: ChatViewModel = hiltViewModel()) 
                     text = input,
                     onText = vm::setInput,
                     busy = state.busy,
-                    onSend = { vm.send() },
+                    onSend = { vm.send(input) },
                     onStop = vm::stop,
                 )
             }

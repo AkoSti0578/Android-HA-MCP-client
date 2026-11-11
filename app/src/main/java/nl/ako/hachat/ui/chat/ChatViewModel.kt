@@ -73,6 +73,19 @@ private data class Prepared(
     val allowed: Set<String>,
 )
 
+/** Acties van het chatscherm (los van de ViewModel, zodat de UI testbaar is). */
+interface ChatActions {
+    fun setInput(text: String)
+    fun send(text: String)
+    fun stop()
+    fun retry()
+    fun approve(ok: Boolean)
+    fun newConversation()
+    fun selectConversation(id: Long)
+    fun deleteConversation(id: Long)
+    fun reconnect()
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ChatViewModel @Inject constructor(
@@ -80,7 +93,7 @@ class ChatViewModel @Inject constructor(
     private val settingsRepo: SettingsRepository,
     private val mcp: McpRepository,
     private val claude: AnthropicClient,
-) : ViewModel() {
+) : ViewModel(), ChatActions {
 
     private val currentId = MutableStateFlow<Long?>(null)
     private val live = MutableStateFlow<Map<Int, LiveBlock>>(emptyMap())
@@ -123,19 +136,19 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch { updateMeta(mcp.refresh()) }
     }
 
-    fun setInput(text: String) { _input.value = text }
+    override fun setInput(text: String) { _input.value = text }
 
-    fun newConversation() {
+    override fun newConversation() {
         if (busy.value) return
         currentId.value = null; canRetry.value = false
     }
 
-    fun selectConversation(id: Long) {
+    override fun selectConversation(id: Long) {
         if (busy.value) return
         currentId.value = id; canRetry.value = false
     }
 
-    fun deleteConversation(id: Long) {
+    override fun deleteConversation(id: Long) {
         if (busy.value && currentId.value == id) return
         viewModelScope.launch {
             chat.delete(id)
@@ -143,20 +156,20 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun reconnect() {
+    override fun reconnect() {
         viewModelScope.launch { updateMeta(mcp.refresh(force = true)) }
     }
 
-    fun approve(ok: Boolean) {
+    override fun approve(ok: Boolean) {
         pending.value?.decision?.complete(ok)
     }
 
     /** Annuleert de lopende beurt; een openstaande bevestiging vervalt daarmee ook (await is annuleerbaar). */
-    fun stop() {
+    override fun stop() {
         job?.cancel()
     }
 
-    fun send(text: String = _input.value) {
+    override fun send(text: String) {
         val t = text.trim()
         if (t.isEmpty() || job?.isActive == true) return
         _input.value = ""
@@ -179,7 +192,7 @@ class ChatViewModel @Inject constructor(
     }
 
     /** Laatste beurt opnieuw proberen (na een fout), zonder het gebruikersbericht te dupliceren. */
-    fun retry() {
+    override fun retry() {
         val convId = currentId.value ?: return
         if (job?.isActive == true) return
         job = viewModelScope.launch {
@@ -266,6 +279,13 @@ class ChatViewModel @Inject constructor(
             }
 
             override suspend fun onNotice(notice: Notice) = chat.appendNotice(convId, turnId, notice)
+
+            /** Gestreamde maar afgebroken tekst zichtbaar houden (alleen UI, gaat niet naar de API). */
+            override suspend fun onCancelled() {
+                val partial = live.value.entries.sortedBy { it.key }
+                    .filter { it.value.type == "text" }.joinToString("\n\n") { it.value.text }.trim()
+                if (partial.isNotEmpty()) chat.appendNotice(convId, turnId, Notice(Notice.Kind.PARTIAL, partial))
+            }
         }
         try {
             loop.runTurn(prep.cfg, history, prep.nameMap, prep.access, prep.allowed, listener)

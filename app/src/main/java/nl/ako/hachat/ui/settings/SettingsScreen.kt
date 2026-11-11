@@ -64,6 +64,12 @@ import nl.ako.hachat.ui.theme.LocalExtraColors
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onOpenTools: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    SettingsContent(state, vm, onBack, onOpenTools)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsContent(state: SettingsUiState, vm: SettingsActions, onBack: () -> Unit, onOpenTools: () -> Unit) {
     val s = state.settings
     Scaffold(
         topBar = {
@@ -190,7 +196,7 @@ private fun SecretField(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ModelPicker(state: SettingsUiState, vm: SettingsViewModel) {
+private fun ModelPicker(state: SettingsUiState, vm: SettingsActions) {
     val s = state.settings
     var open by remember { mutableStateOf(false) }
     val current = s.models.firstOrNull { it.id == s.model }
@@ -235,7 +241,7 @@ private fun ModelPicker(state: SettingsUiState, vm: SettingsViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EffortPicker(state: SettingsUiState, vm: SettingsViewModel) {
+private fun EffortPicker(state: SettingsUiState, vm: SettingsActions) {
     val s = state.settings
     val info = s.models.firstOrNull { it.id == s.model }
     val levels = info?.effortLevels?.takeIf { it.isNotEmpty() } ?: EFFORT_LEVELS
@@ -261,7 +267,7 @@ private fun EffortPicker(state: SettingsUiState, vm: SettingsViewModel) {
 }
 
 @Composable
-private fun McpSection(state: SettingsUiState, vm: SettingsViewModel) {
+private fun McpSection(state: SettingsUiState, vm: SettingsActions) {
     var url by rememberSaveable { mutableStateOf("") }
     var headerName by rememberSaveable(state.settings.mcpHeaderName) { mutableStateOf(state.settings.mcpHeaderName) }
     var headerValue by remember { mutableStateOf("") }

@@ -43,12 +43,14 @@ interface AgentListener {
     suspend fun onMessage(message: JsonObject, response: AssistantResponse?) {}
     fun onToolStatus(callId: String, status: ToolStatus) {}
     suspend fun onNotice(notice: Notice) {}
+    /** Beurt geannuleerd (Stop): kans om gedeeltelijke output voor de UI te bewaren. */
+    suspend fun onCancelled() {}
 }
 
 enum class ToolStatus { AWAITING_APPROVAL, RUNNING, DONE, FAILED, REJECTED }
 
 data class Notice(val kind: Kind, val text: String) {
-    enum class Kind { INFO, WARNING, ERROR, REFUSAL }
+    enum class Kind { INFO, WARNING, ERROR, REFUSAL, PARTIAL }
 }
 
 data class TurnResult(val iterations: Int, val usage: Usage, val stopReason: String?)
@@ -134,6 +136,7 @@ class AgentLoop(
                 if (pendingToolUses.isNotEmpty()) {
                     appendResults(history, pendingToolUses.map { errorResult(it, "Afgebroken door gebruiker.") }, listener)
                 }
+                listener.onCancelled()
                 listener.onNotice(Notice(Notice.Kind.INFO, "Beurt gestopt."))
             }
             throw e

@@ -45,12 +45,28 @@ data class SettingsUiState(
     val tools: List<ToolRow> = emptyList(),
 )
 
+/** Alle acties van het instellingenscherm (los van de ViewModel, zodat de UI testbaar is). */
+interface SettingsActions {
+    fun update(block: (AppSettings) -> AppSettings)
+    fun saveApiKey(key: String)
+    fun clearApiKey()
+    fun refreshModels()
+    fun saveMcp(url: String?, headerName: String, headerValue: String?)
+    fun clearMcpHeader()
+    fun testConnection(url: String, headerName: String, headerValue: String)
+    fun resetSystemPrompt()
+    fun savePatterns(write: String, read: String)
+    fun resetPatterns()
+    fun setOverride(tool: String, o: ToolOverride)
+    fun loadTools()
+}
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repo: SettingsRepository,
     private val claude: AnthropicClient,
     private val mcp: McpRepository,
-) : ViewModel() {
+) : ViewModel(), SettingsActions {
 
     private val modelsTask = MutableStateFlow<TaskState>(TaskState.Idle)
     private val testTask = MutableStateFlow<TaskState>(TaskState.Idle)
@@ -71,18 +87,18 @@ class SettingsViewModel @Inject constructor(
         SettingsUiState(s, h, m, t, ms, rows)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
-    fun update(block: (AppSettings) -> AppSettings) = viewModelScope.launch { repo.update(block) }
+    override fun update(block: (AppSettings) -> AppSettings) { viewModelScope.launch { repo.update(block) } }
 
-    fun saveApiKey(key: String) = viewModelScope.launch {
+    override fun saveApiKey(key: String) { viewModelScope.launch {
         val k = key.trim()
         if (k.isEmpty()) return@launch
         repo.setApiKey(k)
         refreshModels()
-    }
+    } }
 
-    fun clearApiKey() = viewModelScope.launch { repo.setApiKey(null) }
+    override fun clearApiKey() { viewModelScope.launch { repo.setApiKey(null) } }
 
-    fun refreshModels() = viewModelScope.launch {
+    override fun refreshModels() { viewModelScope.launch {
         modelsTask.value = TaskState.Running
         modelsTask.value = try {
             val models = claude.listModels()
@@ -96,24 +112,24 @@ class SettingsViewModel @Inject constructor(
         } catch (e: Exception) {
             TaskState.Failed(e.message ?: "Onbekende fout")
         }
-    }
+    } }
 
-    fun saveMcp(url: String?, headerName: String, headerValue: String?) = viewModelScope.launch {
+    override fun saveMcp(url: String?, headerName: String, headerValue: String?) { viewModelScope.launch {
         if (url != null) repo.setMcpUrl(url.takeIf { it.isNotBlank() })
         if (headerValue != null) repo.setMcpHeaderValue(headerValue.takeIf { it.isNotBlank() })
         repo.update { it.copy(mcpHeaderName = headerName) }
         mcp.reconfigure()
         mcp.refresh(force = true)
-    }
+    } }
 
-    fun clearMcpHeader() = viewModelScope.launch {
+    override fun clearMcpHeader() { viewModelScope.launch {
         repo.setMcpHeaderValue(null)
         repo.update { it.copy(mcpHeaderName = "") }
         mcp.reconfigure()
-    }
+    } }
 
     /** Test met de ingevulde waarden; lege velden vallen terug op de opgeslagen waarden. */
-    fun testConnection(url: String, headerName: String, headerValue: String) = viewModelScope.launch {
+    override fun testConnection(url: String, headerName: String, headerValue: String) { viewModelScope.launch {
         testTask.value = TaskState.Running
         val saved = repo.currentSecrets()
         val u = url.trim().ifEmpty { saved.mcpUrl.orEmpty() }
@@ -131,18 +147,18 @@ class SettingsViewModel @Inject constructor(
             },
             onFailure = { TaskState.Failed(Redaction.scrub(it.message ?: "Onbekende fout", u, cfg.headerValue)) },
         )
-    }
+    } }
 
-    fun resetSystemPrompt() = update { it.copy(systemPrompt = DEFAULT_SYSTEM_PROMPT) }
+    override fun resetSystemPrompt() = update { it.copy(systemPrompt = DEFAULT_SYSTEM_PROMPT) }
 
-    fun savePatterns(write: String, read: String) =
+    override fun savePatterns(write: String, read: String) =
         update { it.copy(writePatterns = ToolPatterns.parse(write), readPatterns = ToolPatterns.parse(read)) }
 
-    fun resetPatterns() = update { it.copy(writePatterns = ToolPatterns.DEFAULT_WRITE, readPatterns = ToolPatterns.DEFAULT_READ) }
+    override fun resetPatterns() = update { it.copy(writePatterns = ToolPatterns.DEFAULT_WRITE, readPatterns = ToolPatterns.DEFAULT_READ) }
 
-    fun setOverride(tool: String, o: ToolOverride) = update { s ->
+    override fun setOverride(tool: String, o: ToolOverride) = update { s ->
         s.copy(toolOverrides = if (o == ToolOverride.AUTO) s.toolOverrides - tool else s.toolOverrides + (tool to o))
     }
 
-    fun loadTools() = viewModelScope.launch { mcp.refresh() }
+    override fun loadTools() { viewModelScope.launch { mcp.refresh() } }
 }

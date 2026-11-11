@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -261,6 +262,7 @@ fun NoticeRow(kind: Notice.Kind, text: String, onRetry: (() -> Unit)? = null) {
         Notice.Kind.WARNING -> Icons.Outlined.Warning to MaterialTheme.colorScheme.tertiary
         Notice.Kind.ERROR -> Icons.Outlined.ErrorOutline to MaterialTheme.colorScheme.error
         Notice.Kind.REFUSAL -> Icons.Outlined.Block to MaterialTheme.colorScheme.error
+        Notice.Kind.PARTIAL -> Icons.Outlined.Info to MaterialTheme.colorScheme.outline
     }
     Surface(
         color = color.copy(alpha = 0.08f),
@@ -333,7 +335,7 @@ fun EmptyState(modifier: Modifier = Modifier, onSuggestion: (String) -> Unit) {
                 modifier = Modifier.fillMaxWidth().clickable { onSuggestion(s) },
             ) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Visibility, null, Modifier.size(16.dp), tint = Color.Unspecified.takeOrElse(MaterialTheme.colorScheme.outline))
+                    Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
                     Spacer(Modifier.width(8.dp))
                     Text(s, style = MaterialTheme.typography.bodyMedium)
                 }
@@ -342,4 +344,3 @@ fun EmptyState(modifier: Modifier = Modifier, onSuggestion: (String) -> Unit) {
     }
 }
 
-private fun Color.takeOrElse(other: Color) = if (this == Color.Unspecified) other else this

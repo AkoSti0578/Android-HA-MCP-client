@@ -52,6 +52,12 @@ import nl.ako.hachat.ui.theme.MonoStyle
 fun ToolsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.loadTools() }
+    ToolsContent(state, vm, onBack)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ToolsContent(state: SettingsUiState, vm: SettingsActions, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -82,7 +88,7 @@ fun ToolsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun PatternEditor(state: SettingsUiState, vm: SettingsViewModel) {
+private fun PatternEditor(state: SettingsUiState, vm: SettingsActions) {
     val s = state.settings
     var write by rememberSaveable(s.writePatterns) { mutableStateOf(s.writePatterns.joinToString(", ")) }
     var read by rememberSaveable(s.readPatterns) { mutableStateOf(s.readPatterns.joinToString(", ")) }

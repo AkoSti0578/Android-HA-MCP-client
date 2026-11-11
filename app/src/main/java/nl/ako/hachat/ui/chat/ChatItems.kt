@@ -66,11 +66,13 @@ object ChatItemMapper {
         parsed.forEach { (m, content) ->
             if (m.turnId != turn) { closeTurn(); turn = m.turnId }
             when (m.role) {
-                "notice" -> out += ChatItem.NoticeItem(
-                    "n-${m.id}",
-                    runCatching { Notice.Kind.valueOf(m.noticeKind ?: "INFO") }.getOrDefault(Notice.Kind.INFO),
-                    (content as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "",
-                )
+                "notice" -> {
+                    val kind = runCatching { Notice.Kind.valueOf(m.noticeKind ?: "INFO") }.getOrDefault(Notice.Kind.INFO)
+                    val text = (content as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                    out += if (kind == Notice.Kind.PARTIAL) {
+                        ChatItem.AssistantText("n-${m.id}", "$text\n\n*(afgebroken)*")
+                    } else ChatItem.NoticeItem("n-${m.id}", kind, text)
+                }
                 "user" -> (content as? JsonArray)?.forEachIndexed { i, b ->
                     val o = b as? JsonObject ?: return@forEachIndexed
                     if (o.str("type") == "text") out += ChatItem.UserText("u-${m.id}-$i", o.str("text").orEmpty())

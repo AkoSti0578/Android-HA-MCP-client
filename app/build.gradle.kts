@@ -68,10 +68,28 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // ./gradlew testDebugUnitTest -Pscreenshots  → schrijft docs/screenshots/*.png
+            it.systemProperty("roborazzi.test.record", project.hasProperty("screenshots").toString())
+            it.systemProperty("ako.screenshotDir", rootProject.file("docs/screenshots").absolutePath)
+            it.maxHeapSize = "2g"
+            // Robolectric haalt de Android-runtime via Gradle (offline-modus) i.p.v. eigen downloader.
+            it.systemProperty("robolectric.offline", "true")
+            it.systemProperty("robolectric.dependency.dir", layout.buildDirectory.dir("robolectric-deps").get().asFile.absolutePath)
+            it.dependsOn("copyRobolectricDeps")
+        }
     }
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
     }
+}
+
+val robolectricRuntime: Configuration by configurations.creating
+
+tasks.register<Copy>("copyRobolectricDeps") {
+    from(robolectricRuntime)
+    into(layout.buildDirectory.dir("robolectric-deps"))
 }
 
 ksp {
@@ -109,4 +127,11 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
+    robolectricRuntime("org.robolectric:android-all-instrumented:14-robolectric-10818077-i7")
 }

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Netwerkbeleid van AKO HA Chat.
+
+  Android's network_security_config kan geen IP-ranges uitdrukken (alleen hostnamen),
+  terwijl de MCP-server op een willekeurig LAN/VPN-adres staat (http://<ip>:9583/...).
+  Daarom twee lagen:
+   1. Hier: cleartext is op basisniveau toegestaan, maar Anthropic (en alle *.anthropic.com)
+      is expliciet HTTPS-only en alleen systeem-CA's worden vertrouwd (geen user-CA's).
+   2. In code: nl.ako.hachat.core.CleartextPolicy (OkHttp-interceptor op de enige HTTP-client
+      van de app) weigert elke http://-request naar een host die niet naar een privé-adres
+      resolvet (10/8, 172.16/12, 192.168/16, 100.64/10 Tailscale/CGNAT, 127/8, 169.254/16,
+      fc00::/7, fe80::/10, ::1) en hostnamen zoals *.local / *.lan / *.home.arpa.
+      Onversleuteld naar internet is dus onmogelijk; deze regel is unit-getest.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">anthropic.com</domain>
+    </domain-config>
+</network-security-config>

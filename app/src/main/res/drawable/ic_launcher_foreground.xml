@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Koperen spreekballon met een huisje erin ("Gieterij"). Veilige zone: 66dp binnen 108dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- spreekballon -->
+    <path
+        android:fillColor="#E07A3F"
+        android:pathData="M34,30h40a8,8 0,0 1,8 8v26a8,8 0,0 1,-8 8H52l-12,10v-10h-6a8,8 0,0 1,-8 -8V38a8,8 0,0 1,8 -8z" />
+    <!-- huisje -->
+    <path
+        android:fillColor="#1E1A17"
+        android:pathData="M54,37l15,12h-4v15h-8v-9h-6v9h-8V49h-4z" />
+    <!-- gloeiend raampje -->
+    <path
+        android:fillColor="#FFC56B"
+        android:pathData="M51,46h6v5h-6z" />
+</vector>

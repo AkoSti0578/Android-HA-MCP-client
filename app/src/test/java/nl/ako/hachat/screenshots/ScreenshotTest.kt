@@ -73,6 +73,8 @@ class ScreenshotTest {
         override fun update(block: (AppSettings) -> AppSettings) {}
         override fun saveApiKey(key: String) {}
         override fun clearApiKey() {}
+        override fun saveHaToken(token: String) {}
+        override fun clearHaToken() {}
         override fun refreshModels() {}
         override fun saveMcp(url: String?, headerName: String, headerValue: String?) {}
         override fun clearMcpHeader() {}
@@ -85,12 +87,12 @@ class ScreenshotTest {
     }
 
     private val tools = listOf(
-        McpTool("ha_search_entities", null, "Search entities by name, area or domain", JsonObject(emptyMap())),
-        McpTool("ha_get_state", null, "Get the current state of an entity", JsonObject(emptyMap())),
-        McpTool("ha_call_service", null, "Call any Home Assistant service", JsonObject(emptyMap())),
-        McpTool("ha_config_set_automation", null, "Create or update an automation", JsonObject(emptyMap())),
+        McpTool("GetLiveContext", null, "Provides real-time information about the CURRENT state of devices", JsonObject(emptyMap())),
+        McpTool("GetDateTime", null, "Provides the current date and time", JsonObject(emptyMap())),
+        McpTool("HassTurnOn", null, "Turns on/opens/presses a device or entity", JsonObject(emptyMap())),
+        McpTool("HassLightSet", null, "Sets the brightness percentage or color of a light", JsonObject(emptyMap())),
     )
-    private val connected = McpState.Connected(McpServerInfo("ha-mcp", "6.1.0", "2025-06-18"), List(87) { tools[it % tools.size] })
+    private val connected = McpState.Connected(McpServerInfo("home-assistant", "2026.11.0", "2025-06-18"), List(23) { tools[it % tools.size] })
 
     private val conversations = listOf(
         ConversationEntity(1, "Lichten uit om 23:00", 0, 1_762_850_000_000),
@@ -108,8 +110,7 @@ class ScreenshotTest {
     fun chat_gesprek() {
         val items = listOf(
             ChatItem.UserText("u1", "Welke lampen staan er nog aan beneden?"),
-            ChatItem.ToolCallItem("t1", "a", "ha_search_entities", json("""{"query":"light","area":"beneden"}"""), result = "…", status = ToolStatus.DONE, access = ToolAccess.READ),
-            ChatItem.ToolCallItem("t2", "b", "ha_get_state", json("""{"entity_id":"light.woonkamer"}"""), result = "on", status = ToolStatus.DONE, access = ToolAccess.READ),
+            ChatItem.ToolCallItem("t1", "a", "GetLiveContext", json("{}"), result = "…", status = ToolStatus.DONE, access = ToolAccess.READ),
             ChatItem.AssistantText(
                 "a1",
                 """Er branden nog **3 lampen** beneden:
@@ -148,10 +149,10 @@ Om **23:00** gaan alle lampen in woonkamer en keuken uit.""",
 
     @Test
     fun chat_bevestiging() {
-        val call = ToolCall("w1", "ha_config_set_automation", "ha_config_set_automation", automation, ToolAccess.WRITE)
+        val call = ToolCall("w1", "HassTurnOff", "HassTurnOff", json("""{"area":"Woonkamer","domain":["light"]}"""), ToolAccess.WRITE)
         val items = listOf(
-            ChatItem.UserText("u2", "Maak die automation maar"),
-            ChatItem.AssistantText("a2", "Ik maak de automation aan. Bevestig je even?"),
+            ChatItem.UserText("u2", "Doe de lampen in de woonkamer maar uit"),
+            ChatItem.AssistantText("a2", "Ik zet de lampen in de **woonkamer** uit."),
         )
         val state = ChatUiState(
             conversations, 1, items, busy = true, status = "Wacht op jouw bevestiging…",
@@ -172,8 +173,8 @@ Om **23:00** gaan alle lampen in woonkamer en keuken uit.""",
     fun chat_fouten() {
         val items = listOf(
             ChatItem.UserText("u", "Hoe warm is het in de hal?"),
-            ChatItem.ToolCallItem("t", "x", "ha_get_state", json("""{"entity_id":"sensor.hal_temperatuur"}"""),
-                result = "MCP-server onbereikbaar (http://192.168.1.10:9583/…). Niet thuis? Zet VPN aan.", isError = true,
+            ChatItem.ToolCallItem("t", "x", "GetLiveContext", json("{}"),
+                result = "MCP-server onbereikbaar (http://192.168.1.10:8123/api/mcp). Niet thuis? Zet VPN aan.", isError = true,
                 status = ToolStatus.FAILED, access = ToolAccess.READ),
             ChatItem.NoticeItem("n1", Notice.Kind.ERROR, "Rate limit bereikt (429). Probeer het over 30s opnieuw."),
         )
@@ -194,9 +195,9 @@ Om **23:00** gaan alle lampen in woonkamer en keuken uit.""",
         val models = listOf(ModelInfo("claude-opus-5-5", "Claude Opus 5.5", true, true, listOf("low", "medium", "high", "xhigh", "max")))
         val state = SettingsUiState(
             settings = AppSettings(models = models, effort = "medium"),
-            hints = SecretHints("sk-ant-…", "http://192.168.1.10:9583/…", null),
+            hints = SecretHints("sk-ant-…", "http://192.168.1.10:8123/api/mcp", null, "•••••• (183 tekens)"),
             models = TaskState.Ok("14 modellen geladen"),
-            test = TaskState.Ok("Verbonden met ha-mcp 6.1.0 — 87 tools (52 lezen, 35 schrijven)"),
+            test = TaskState.Ok("Verbonden met home-assistant 2026.11.0 — 23 tools (4 lezen, 19 schrijven) + instructies"),
             mcp = connected,
         )
         compose.setContent { AkoTheme { SettingsContent(state, noSettings, {}, {}) } }
@@ -206,8 +207,8 @@ Om **23:00** gaan alle lampen in woonkamer en keuken uit.""",
     @Test
     fun tools() {
         val rows = tools.map {
-            val write = it.name.contains("call") || it.name.contains("set")
-            ToolRow(it, Classification(if (write) ToolAccess.WRITE else ToolAccess.READ, if (write) "patroon 'set'" else "patroon 'get'"), ToolOverride.AUTO)
+            val write = it.name.startsWith("Hass")
+            ToolRow(it, Classification(if (write) ToolAccess.WRITE else ToolAccess.READ, if (write) "server: readOnlyHint=false" else "server: readOnlyHint"), ToolOverride.AUTO)
         }
         val state = SettingsUiState(mcp = connected, tools = rows)
         compose.setContent { AkoTheme { ToolsContent(state, noSettings, {}) } }

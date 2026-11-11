@@ -38,6 +38,8 @@ class SettingsRepository(
         val apiKey = stringPreferencesKey("enc_api_key")
         val mcpUrl = stringPreferencesKey("enc_mcp_url")
         val mcpHeaderValue = stringPreferencesKey("enc_mcp_header_value")
+        val haToken = stringPreferencesKey("enc_ha_token")
+        val serverInstructions = booleanPreferencesKey("server_instructions")
     }
 
     private val stringList = ListSerializer(String.serializer())
@@ -58,6 +60,7 @@ class SettingsRepository(
             streaming = p[K.streaming] ?: d.streaming,
             readOnlyMode = p[K.readOnly] ?: d.readOnlyMode,
             showToolCalls = p[K.showToolCalls] ?: d.showToolCalls,
+            useServerInstructions = p[K.serverInstructions] ?: d.useServerInstructions,
             mcpHeaderName = p[K.mcpHeaderName] ?: d.mcpHeaderName,
             writePatterns = p[K.writePatterns]?.let { decode(stringList, it) } ?: d.writePatterns,
             readPatterns = p[K.readPatterns]?.let { decode(stringList, it) } ?: d.readPatterns,
@@ -72,20 +75,18 @@ class SettingsRepository(
             apiKey = p[K.apiKey]?.let { cipher.decrypt(it, "api_key") },
             mcpUrl = p[K.mcpUrl]?.let { cipher.decrypt(it, "mcp_url") },
             mcpHeaderValue = p[K.mcpHeaderValue]?.let { cipher.decrypt(it, "mcp_header") },
+            haToken = p[K.haToken]?.let { cipher.decrypt(it, "ha_token") },
         )
     }
 
     /** Welke geheimen zijn opgeslagen — zonder ze te ontsleutelen (voor de UI). */
-    val secretPresence: Flow<Triple<Boolean, Boolean, Boolean>> = store.data.map { p ->
-        Triple(p[K.apiKey] != null, p[K.mcpUrl] != null, p[K.mcpHeaderValue] != null)
-    }
-
     suspend fun current(): AppSettings = settings.first()
     suspend fun currentSecrets(): Secrets = secrets.first()
 
     suspend fun setApiKey(value: String?) = setSecret(K.apiKey, value?.trim(), "api_key")
     suspend fun setMcpUrl(value: String?) = setSecret(K.mcpUrl, value?.trim(), "mcp_url")
     suspend fun setMcpHeaderValue(value: String?) = setSecret(K.mcpHeaderValue, value?.trim(), "mcp_header")
+    suspend fun setHaToken(value: String?) = setSecret(K.haToken, value?.trim(), "ha_token")
 
     private suspend fun setSecret(key: Preferences.Key<String>, value: String?, purpose: String) {
         store.edit { p ->
@@ -106,6 +107,7 @@ class SettingsRepository(
             p[K.streaming] = new.streaming
             p[K.readOnly] = new.readOnlyMode
             p[K.showToolCalls] = new.showToolCalls
+            p[K.serverInstructions] = new.useServerInstructions
             p[K.mcpHeaderName] = new.mcpHeaderName.trim()
             p[K.writePatterns] = AppJson.encodeToString(stringList, new.writePatterns)
             p[K.readPatterns] = AppJson.encodeToString(stringList, new.readPatterns)

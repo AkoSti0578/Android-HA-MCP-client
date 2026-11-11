@@ -228,7 +228,14 @@ class ChatViewModel @Inject constructor(
         val cfg = TurnConfig(
             model = s.model,
             maxTokens = s.maxTokens,
-            systemPrompt = s.systemPrompt + if (s.readOnlyMode) "\n\nLees-modus staat aan: je kunt niets wijzigen in Home Assistant, alleen informatie opvragen." else "",
+            systemPrompt = buildString {
+                append(s.systemPrompt)
+                val instr = connected.server.instructions
+                if (s.useServerInstructions && !instr.isNullOrBlank()) {
+                    append("\n\n<home_assistant_instructies>\n").append(instr.trim()).append("\n</home_assistant_instructies>")
+                }
+                if (s.readOnlyMode) append("\n\nLees-modus staat aan: je kunt niets wijzigen in Home Assistant, alleen informatie opvragen.")
+            },
             tools = converted.definitions,
             stream = s.streaming,
             effort = s.effort?.takeIf { info?.effortLevels?.contains(it) == true },

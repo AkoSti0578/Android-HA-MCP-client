@@ -37,6 +37,8 @@ data class AppSettings(
     val streaming: Boolean = true,
     val readOnlyMode: Boolean = false,
     val showToolCalls: Boolean = true,
+    /** Instructies/prompts van de MCP-server (Home Assistant) aan de system prompt toevoegen. */
+    val useServerInstructions: Boolean = true,
     val mcpHeaderName: String = "",
     val writePatterns: List<String> = ToolPatterns.DEFAULT_WRITE,
     val readPatterns: List<String> = ToolPatterns.DEFAULT_READ,
@@ -49,9 +51,11 @@ data class Secrets(
     val apiKey: String? = null,
     val mcpUrl: String? = null,
     val mcpHeaderValue: String? = null,
+    /** Home Assistant long-lived access token. */
+    val haToken: String? = null,
 ) {
     override fun toString(): String =
-        "Secrets(apiKey=${if (apiKey != null) "set" else "unset"}, mcpUrl=${if (mcpUrl != null) "set" else "unset"}, header=${if (mcpHeaderValue != null) "set" else "unset"})"
+        "Secrets(apiKey=${if (apiKey != null) "set" else "unset"}, mcpUrl=${if (mcpUrl != null) "set" else "unset"}, header=${if (mcpHeaderValue != null) "set" else "unset"}, haToken=${if (haToken != null) "set" else "unset"})"
 }
 
 object ToolPatterns {
@@ -60,10 +64,14 @@ object ToolPatterns {
         "add", "rename", "reload", "enable", "disable", "toggle", "turn_on", "turn_off", "trigger",
         "fire_event", "install", "uninstall", "restore", "reset", "import", "assign", "write",
         "upload", "execute", "run", "start", "stop", "move", "edit", "save", "send", "apply", "manage",
+        // Home Assistant Assist-intents (HassTurnOn, HassMediaPause, HassCancelTimer, ...)
+        "pause", "unpause", "cancel", "broadcast", "next", "previous", "return", "open", "close",
+        "lock", "unlock", "play", "increase", "decrease", "complete", "respond",
     )
     val DEFAULT_READ = listOf(
         "get", "list", "search", "history", "eval_template", "logbook", "overview", "statistics",
         "find", "read", "describe", "show", "check", "status", "query", "info", "render", "validate",
+        "live_context", "date_time",
     )
 
     fun parse(text: String): List<String> =

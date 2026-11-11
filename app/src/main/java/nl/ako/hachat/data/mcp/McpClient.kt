@@ -123,11 +123,35 @@ class McpClient(
         sessionId = sid
         protocolVersion = result.str("protocolVersion") ?: PROTOCOL_VERSION
         val info = result.obj("serverInfo")
-        serverInfo = McpServerInfo(info?.str("name") ?: "MCP-server", info?.str("version"), protocolVersion)
         // notificatie: server antwoordt met 202 Accepted zonder body
         post(cfg, sessionId, jsonOf("jsonrpc" to "2.0", "method" to "notifications/initialized"), expectResponse = false)
+        val hasPrompts = result.obj("capabilities")?.containsKey("prompts") == true
+        val prompts = if (hasPrompts) runCatching { fetchPrompts(cfg) }.getOrNull() else null
+        val instructions = listOfNotNull(result.str("instructions")?.takeIf { it.isNotBlank() }, prompts)
+            .joinToString("\n\n").ifBlank { null }
+        serverInfo = McpServerInfo(info?.str("name") ?: "MCP-server", info?.str("version"), protocolVersion, instructions)
         initializedFor = cfg
         return serverInfo!!
+    }
+
+    /**
+     * Home Assistant levert per toolset een standaard-prompt met instructies hoe de tools te
+     * gebruiken (bv. Assist-intents). Die nemen we op in de system prompt. Prompts met
+     * verplichte argumenten slaan we over.
+     */
+    private suspend fun fetchPrompts(cfg: McpConfig): String? {
+        val list = post(cfg, sessionId, request("prompts/list", JsonObject(emptyMap()))).first
+        val texts = list.arr("prompts").orEmpty().mapNotNull { it as? JsonObject }
+            .filter { p -> p.arr("arguments").orEmpty().none { (it as? JsonObject)?.bool("required") == true } }
+            .take(5)
+            .mapNotNull { p ->
+                val name = p.str("name") ?: return@mapNotNull null
+                val got = post(cfg, sessionId, request("prompts/get", jsonOf("name" to name))).first
+                got.arr("messages").orEmpty().mapNotNull { m ->
+                    ((m as? JsonObject)?.obj("content"))?.takeIf { it.str("type") == "text" }?.str("text")
+                }.joinToString("\n").takeIf { it.isNotBlank() }
+            }
+        return texts.joinToString("\n\n").ifBlank { null }
     }
 
     private suspend fun rpc(method: String, params: JsonObject): JsonObject {
@@ -153,6 +177,7 @@ class McpClient(
             .header("Accept", "application/json, text/event-stream")
             .header("MCP-Protocol-Version", protocolVersion)
         if (sid != null) b.header("Mcp-Session-Id", sid)
+        if (!cfg.bearerToken.isNullOrBlank()) b.header("Authorization", "Bearer ${cfg.bearerToken.trim()}")
         if (!cfg.headerName.isNullOrBlank() && !cfg.headerValue.isNullOrBlank()) {
             b.header(cfg.headerName.trim(), cfg.headerValue.trim())
         }

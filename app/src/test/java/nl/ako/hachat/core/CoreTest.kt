@@ -44,6 +44,7 @@ class RedactionTest {
     fun `MCP-URL wordt zonder geheim pad getoond`() {
         assertEquals("http://192.168.1.5:9583/…", Redaction.url("http://192.168.1.5:9583/private_abc123"))
         assertEquals("(ongeldige URL)", Redaction.url("geen url"))
+        assertEquals("http://192.168.1.10:8123/api/mcp", Redaction.url("http://192.168.1.10:8123/api/mcp"))
     }
 
     @Test

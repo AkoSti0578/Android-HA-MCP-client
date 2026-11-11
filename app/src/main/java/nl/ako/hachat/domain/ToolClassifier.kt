@@ -11,13 +11,15 @@ data class Classification(val access: ToolAccess, val reason: String)
 /**
  * Bepaalt of een tool alleen leest of iets wijzigt. Volgorde (eerste match wint):
  *  1. handmatige override van de gebruiker
- *  2. naam bevat een schrijf-patroon (set/remove/delete/call_service/...)  → schrijven
- *  3. MCP-annotatie readOnlyHint=true                                        → lezen
- *  4. naam bevat een lees-patroon (get/list/search/history/...)              → lezen
- *  5. onbekend                                                               → schrijven (fail-safe)
+ *  2. server zegt expliciet readOnlyHint=false of destructiveHint=true    → schrijven
+ *  3. naam bevat een schrijf-patroon (set/turn_on/call_service/...)       → schrijven
+ *  4. server zegt readOnlyHint=true (Home Assistant doet dit per tool)     → lezen
+ *  5. naam bevat een lees-patroon (get/list/search/history/...)           → lezen
+ *  6. onbekend                                                            → schrijven (fail-safe)
  *
- * Een patroon matcht op woordgrenzen binnen de naam (`_`, `-`, `.`): "set" matcht
- * `ha_config_set_automation` maar niet `ha_reset_x` of `asset_list`.
+ * Namen worden eerst genormaliseerd: CamelCase wordt snake_case (`HassTurnOn` → `hass_turn_on`).
+ * Een patroon matcht op woordgrenzen (`_`, `-`, `.`): "set" matcht `HassLightSet` en
+ * `ha_config_set_automation`, maar niet `ha_reset_x` of `asset_list`.
  */
 class ToolClassifier(
     writePatterns: List<String>,
@@ -33,9 +35,12 @@ class ToolClassifier(
             ToolOverride.WRITE -> return Classification(ToolAccess.WRITE, "handmatig: schrijven")
             else -> Unit
         }
-        val name = tool.name.lowercase()
+        val name = normalize(tool.name)
+        val ann = tool.annotations
+        if (ann?.bool("readOnlyHint") == false) return Classification(ToolAccess.WRITE, "server: readOnlyHint=false")
+        if (ann?.bool("destructiveHint") == true) return Classification(ToolAccess.WRITE, "server: destructiveHint")
         write.firstOrNull { matches(name, it) }?.let { return Classification(ToolAccess.WRITE, "patroon '$it'") }
-        if (tool.annotations?.bool("readOnlyHint") == true) return Classification(ToolAccess.READ, "server: readOnlyHint")
+        if (ann?.bool("readOnlyHint") == true) return Classification(ToolAccess.READ, "server: readOnlyHint")
         read.firstOrNull { matches(name, it) }?.let { return Classification(ToolAccess.READ, "patroon '$it'") }
         return Classification(ToolAccess.WRITE, "onbekend → veilig als schrijven")
     }
@@ -43,6 +48,10 @@ class ToolClassifier(
     fun classifyAll(tools: List<McpTool>): Map<String, Classification> = tools.associate { it.name to classify(it) }
 
     companion object {
+        /** `HassTurnOn` → `hass_turn_on`, `GetLiveContext` → `get_live_context`. */
+        fun normalize(name: String): String =
+            name.replace(Regex("([a-z0-9])([A-Z])"), "$1_$2").replace(Regex("([A-Z]+)([A-Z][a-z])"), "$1_$2").lowercase()
+
         private const val SEP = "[_.\\-/]"
         fun matches(name: String, pattern: String): Boolean {
             val p = Regex.escape(pattern)

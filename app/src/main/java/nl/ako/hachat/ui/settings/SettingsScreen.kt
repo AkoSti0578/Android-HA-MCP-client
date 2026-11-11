@@ -107,6 +107,23 @@ fun SettingsContent(state: SettingsUiState, vm: SettingsActions, onBack: () -> U
             HorizontalDivider()
             Section("Home Assistant (MCP)")
             McpSection(state, vm)
+            SecretField(
+                label = "Home Assistant access token",
+                savedHint = state.hints.haToken,
+                placeholder = "eyJhbGciOi…",
+                onSave = vm::saveHaToken,
+                onClear = vm::clearHaToken,
+            )
+            Text(
+                "Profiel → Beveiliging → Long-lived access tokens → Token aanmaken (als beheerder). Wordt meegestuurd als Authorization: Bearer.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ToggleRow(
+                "Instructies van Home Assistant gebruiken",
+                "Voegt de prompt die Home Assistant per toolset meelevert toe aan de system prompt.",
+                s.useServerInstructions,
+            ) { v -> vm.update { it.copy(useServerInstructions = v) } }
 
             HorizontalDivider()
             Section("Veiligheid")
@@ -281,7 +298,7 @@ private fun McpSection(state: SettingsUiState, vm: SettingsActions) {
         value = url,
         onValueChange = { url = it },
         label = { Text(if (state.hints.mcpUrl == null) "MCP-server URL" else "Nieuwe MCP-server URL (leeg = ongewijzigd)") },
-        placeholder = { Text("http://192.168.1.10:9583/private_…") },
+        placeholder = { Text("http://192.168.1.10:8123/api/mcp") },
         singleLine = true,
         visualTransformation = if (showUrl) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
@@ -290,11 +307,11 @@ private fun McpSection(state: SettingsUiState, vm: SettingsActions) {
                 Icon(if (showUrl) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, null)
             }
         },
-        supportingText = { Text("Bevat een geheim pad, daarom versleuteld opgeslagen. http:// alleen binnen je eigen netwerk/VPN.") },
+        supportingText = { Text("Instellingen → Systeem → AI → Model Context Protocol → Main URL. http:// alleen binnen je eigen netwerk/VPN.") },
         modifier = Modifier.fillMaxWidth(),
     )
     Text(
-        if (showAdvanced) "▾ Extra HTTP-header" else "▸ Extra HTTP-header (optioneel, bv. Authorization)",
+        if (showAdvanced) "▾ Extra HTTP-header" else "▸ Extra HTTP-header (optioneel, bv. voor een reverse proxy)",
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.clickable { showAdvanced = !showAdvanced }.padding(vertical = 4.dp),
@@ -302,13 +319,13 @@ private fun McpSection(state: SettingsUiState, vm: SettingsActions) {
     if (showAdvanced) {
         OutlinedTextField(
             value = headerName, onValueChange = { headerName = it },
-            label = { Text("Headernaam") }, placeholder = { Text("Authorization") },
+            label = { Text("Headernaam") }, placeholder = { Text("CF-Access-Client-Secret") },
             singleLine = true, modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = headerValue, onValueChange = { headerValue = it },
             label = { Text(if (state.hints.mcpHeader == null) "Headerwaarde" else "Nieuwe headerwaarde (leeg = ongewijzigd)") },
-            placeholder = { Text("Bearer …") },
+            placeholder = { Text("…") },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             supportingText = { state.hints.mcpHeader?.let { Text("Opgeslagen: $it") } },

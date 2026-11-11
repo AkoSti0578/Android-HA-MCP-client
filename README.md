@@ -1,8 +1,10 @@
 # AKO HA Chat
 
 Android-app (Kotlin · Jetpack Compose · Material 3 · minSdk 29) om in gewone taal met je Home Assistant
-te praten, via Claude en de [ha-mcp](https://github.com/homeassistant-ai/ha-mcp)-server. De app is zelf de
-MCP-client, zodat de MCP-server gewoon op je LAN/VPN kan blijven staan en nooit publiek hoeft te zijn.
+te praten, via Claude en de ingebouwde Home Assistant-integratie
+[Model Context Protocol](https://www.home-assistant.io/integrations/mcp_server/) (`mcp_server`). De app is zelf
+de MCP-client, zodat Home Assistant gewoon op je LAN/VPN kan blijven staan en nooit publiek hoeft te zijn.
+(Claude-connectors in de cloud vereisen juist een publiek bereikbare Home Assistant.)
 
 | Chat | Bevestiging | Instellingen | Tools |
 |---|---|---|---|
@@ -21,15 +23,18 @@ MCP-client, zodat de MCP-server gewoon op je LAN/VPN kan blijven staan en nooit 
  │          AgentLoop ── ClaudeApi ───┘                       └─────────────────────┘
  │              │
  │          ToolExecutor (McpClient)  │   HTTP op LAN/VPN     ┌─────────────────────┐
- │              └─────────────────────┼─────────────────────▶ │ ha-mcp add-on :9583  │
- └────────────────────────────────────┘  JSON-RPC, Streamable │ /private_<geheim>    │
-                                          HTTP                 └─────────────────────┘
+ │              └─────────────────────┼─────────────────────▶ │ Home Assistant :8123 │
+ └────────────────────────────────────┘  JSON-RPC, Streamable │ /api/mcp             │
+                                          HTTP + Bearer token  └─────────────────────┘
 ```
 
-1. **Verbinden** – `initialize` → `notifications/initialized` → `tools/list` (met paginatie). De
-   `Mcp-Session-Id` wordt bewaard; bij een verlopen sessie (404, bv. na herstart van de add-on)
-   initialiseert de client automatisch opnieuw. Antwoorden mogen `application/json` of
-   `text/event-stream` zijn.
+1. **Verbinden** – `initialize` → `notifications/initialized` → `prompts/list`/`prompts/get` →
+   `tools/list`, met `Authorization: Bearer <long-lived access token>`. Home Assistants endpoint is
+   stateless (geen `Mcp-Session-Id`, alleen JSON-antwoorden, 202 op notificaties). De client
+   ondersteunt daarnaast sessie-id's, SSE-antwoorden en sessieherstel, zodat hij ook met andere
+   MCP-servers werkt, zoals ha-mcp.
+   De prompt die Home Assistant per toolset meelevert ("hoe gebruik je deze tools") komt in de
+   system prompt. Dat is uit te zetten.
 2. **Conversie** – MCP-tools → Anthropic tool-definities (`name`, `description`, `input_schema`).
    Namen worden gesaneerd naar `^[a-zA-Z0-9_-]{1,64}$` met een mapping terug, en de lijst wordt
    op naam gesorteerd zodat de prompt-cache stabiel blijft.
@@ -43,16 +48,18 @@ MCP-client, zodat de MCP-server gewoon op je LAN/VPN kan blijven staan en nooit 
 ### Veiligheid
 
 * **Lezen vs. schrijven** – elke tool wordt geclassificeerd (eerste match wint):
-  handmatige keuze → schrijf-patroon (`set`, `remove`, `delete`, `call_service`, `restart`,
-  `bulk_control`, …) → MCP-hint `readOnlyHint` → lees-patroon (`get`, `list`, `search`, `history`,
-  `eval_template`, …) → **onbekend = schrijven**. Patronen matchen op woorddelen (`set` matcht
-  `ha_config_set_automation`, niet `ha_reset_x`). Patronen en per-tool overrides zijn instelbaar.
+  handmatige keuze → server-annotatie `readOnlyHint: false` / `destructiveHint: true` →
+  schrijf-patroon (`set`, `turn_on`, `call_service`, `pause`, `cancel`, …) → `readOnlyHint: true` →
+  lees-patroon (`get`, `list`, `search`, `history`, …) → **onbekend = schrijven**. Home Assistant zet
+  die annotaties per tool, en CamelCase-namen worden genormaliseerd (`HassTurnOn` → `hass_turn_on`).
+  Zo worden `GetLiveContext` en `GetDateTime` lezen, en `HassTurnOn`, `HassLightSet` en
+  `HassMediaPause` schrijven. Patronen en per-tool overrides zijn instelbaar.
 * **Bevestiging** – schrijf-tools vragen *altijd* eerst om bevestiging via een kaart met toolnaam en
   argumenten (automations/scripts standaard als YAML, schakelbaar naar JSON). *Weigeren* stuurt een
   `tool_result` met `is_error: true` en "Gebruiker heeft geweigerd" naar Claude.
 * **Lees-modus** – schrijf-tools worden niet eens naar Claude gestuurd. Vraagt Claude er toch één aan,
   dan wordt die geweigerd zonder uitvoering.
-* **Geheimen** – API key, MCP-URL (bevat `private_<secret>`) en de optionele extra header worden met
+* **Geheimen** – API key, Home Assistant-token, MCP-URL en de optionele extra header worden met
   AES-256-GCM (Tink) versleuteld; de sleutel staat niet-exporteerbaar in de Android Keystore. Na
   opslaan toont de app alleen een hint. Er is geen HTTP-logging, foutmeldingen worden geschoond van
   geheimen, en backups zijn uitgeschakeld.
@@ -92,8 +99,10 @@ MCP-client, zodat de MCP-server gewoon op je LAN/VPN kan blijven staan en nooit 
 | 401 | Ongeldige API key (401). Controleer je key in Instellingen. |
 | 429 | Rate limit, automatische nieuwe poging met aftelling; daarna *Opnieuw*-knop |
 | 529 / 5xx | Overbelast / serverfout, automatische retry |
-| MCP onbereikbaar | MCP-server onbereikbaar (http://192.168.1.10:9583/…). **Niet thuis? Zet VPN aan.** |
-| 401/403/404 van MCP | Uitleg of het geheime pad of de header klopt |
+| MCP onbereikbaar | MCP-server onbereikbaar (http://192.168.1.10:8123/api/mcp). **Niet thuis? Zet VPN aan.** |
+| 401 van Home Assistant | Ontbreekt het access token, of is het ongeldig/ingetrokken? |
+| 403 van Home Assistant | Het endpoint vereist een beheerder-account (instelling *Require an administrator account*) |
+| 404 van Home Assistant | Is de integratie *Model Context Protocol* ingeschakeld en klopt `/api/mcp`? |
 | http:// naar internet | Geweigerd: alleen toegestaan binnen je eigen netwerk/VPN |
 
 ---
@@ -123,7 +132,8 @@ MVVM met Hilt, Coroutines/Flow en kotlinx.serialization. Schermen zijn stateless
 
 **Waarom geen Kotlin MCP SDK?** Die trekt Ktor en een eigen serialization-stack mee en geeft minder
 grip op foutafhandeling en het schonen van geheimen. Het benodigde deel van het protocol is klein en is
-hier volledig getest tegen een gesimuleerde ha-mcp (JSON én SSE, sessie-verloop, paginatie).
+hier volledig getest tegen een nabootsing van Home Assistants `mcp_server`, gebaseerd op de broncode
+(stateless, Bearer, 403 voor niet-beheerders, prompts), en tegen een server met sessies en SSE.
 
 **Waarom geen Anthropic SDK?** Er is geen officiële Kotlin/Android-SDK zonder JVM-zwaarte die streaming
 met tool-use zo fijnmazig laat afhandelen; de Messages API is direct aangesproken via OkHttp.
@@ -180,10 +190,28 @@ Of kopieer de APK naar de telefoon en open hem (sta "installeren uit onbekende b
 
 ### 5. Instellen in de app
 
+Eerst in Home Assistant:
+
+1. **Instellingen → Systeem → AI**: zet *Model Context Protocol* aan en kopieer de **Main URL**
+   (bv. `http://192.168.1.10:8123/api/mcp`). Onder *Individual URLs* staat per toolset een eigen URL,
+   bijvoorbeeld `/api/mcp/assist` voor alleen *Device control*.
+2. Bij **Devices & services → Model Context Protocol → Configure** kies je welke toolsets de Main URL
+   aanbiedt. *Device control* raakt alleen entiteiten die je aan spraakassistenten hebt
+   [blootgesteld](https://www.home-assistant.io/voice_control/voice_remote_expose_devices/); *Home Assistant*
+   mag alles en vereist een beheerder. Er is ook een *Read-only*-optie.
+3. **Profiel → Beveiliging → Long-lived access tokens → Token aanmaken**, met een beheerder-account
+   als de Main URL dat vereist (standaard ja).
+
+Dan in de app:
+
 1. **Instellingen → Claude API key** plakken en opslaan. De modellijst laadt automatisch.
-2. **MCP-server URL**: `http://<ip-van-HA>:9583/private_<secret>` (zie de add-on-log van ha-mcp)
-   → *Test verbinding* toont bijvoorbeeld "Verbonden met ha-mcp — 87 tools (52 lezen, 35 schrijven)".
+2. **MCP-server URL**: de Main URL, plus het **Home Assistant access token**.
+   *Test verbinding* toont bijvoorbeeld "Verbonden met home-assistant 2026.11.0 — 23 tools
+   (4 lezen, 19 schrijven) + instructies".
 3. Optioneel: kijk bij **Tool-classificatie** of alles klopt.
+
+> Heb je IP-bans aan in Home Assistant, dan kunnen herhaalde 401's (fout token) je telefoon blokkeren:
+> controleer dan `ip_bans.yaml`.
 
 ---
 
@@ -193,7 +221,7 @@ Of kopieer de APK naar de telefoon en open hem (sta "installeren uit onbekende b
 ./gradlew testDebugUnitTest
 ```
 
-79 JVM-tests, onder andere:
+87 JVM-tests, onder andere:
 
 * **AgentLoopTest**: gemockte Claude-API en MCP: tool-ronde, bevestigen/weigeren
   (`is_error` + "Gebruiker heeft geweigerd"), parallelle calls in één bericht, lees-modus, max. 15
@@ -202,7 +230,9 @@ Of kopieer de APK naar de telefoon en open hem (sta "installeren uit onbekende b
 * **ToolConverterTest / ToolClassifierTest**: MCP → Anthropic en lezen/schrijven
 * **AnthropicClientTest** (MockWebServer): SSE-opbouw incl. thinking-signatures en tool-JSON,
   429 met `retry-after`, backoff bij 529, 401, fout midden in een stream, modellijst-paginatie
-* **McpClientTest** (gesimuleerde ha-mcp): sessie-id, JSON en SSE, paginatie, sessie-herstel,
+* **HomeAssistantMcpTest**: nabootsing van HA's `mcp_server`: stateless, Bearer-token,
+  401/403 met uitleg, prompts als instructies, classificatie van echte HA-tools met annotaties
+* **McpClientTest** (server met sessies): sessie-id, JSON en SSE, paginatie, sessieherstel,
   headers, onbereikbaar plus VPN-hint zonder het geheime pad te lekken
 * CleartextPolicy, YAML (o.a. `"23:00:00"` correct gequote), Markdown, SSE-parser, ChatItemMapper
 * **ScreenshotTest**: rendert alle schermen in Robolectric (rook-test)

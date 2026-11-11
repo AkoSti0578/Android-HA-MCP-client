@@ -32,6 +32,24 @@ class ToolClassifierTest {
     }
 
     @Test
+    fun `Home Assistant Assist-intents (CamelCase) worden herkend`() {
+        listOf("HassTurnOn", "HassTurnOff", "HassLightSet", "HassClimateSetTemperature", "HassMediaPause",
+            "HassMediaNext", "HassCancelAllTimers", "HassBroadcast", "HassListAddItem", "HassVacuumReturnToBase", "HassStartTimer")
+            .forEach { assertEquals(it, ToolAccess.WRITE, access(it)) }
+        listOf("GetLiveContext", "GetDateTime", "HassGetWeather", "todo_get_items").forEach { assertEquals(it, ToolAccess.READ, access(it)) }
+        assertEquals("hass_turn_on", ToolClassifier.normalize("HassTurnOn"))
+        assertEquals("get_live_context", ToolClassifier.normalize("GetLiveContext"))
+        assertEquals("ha_get_state", ToolClassifier.normalize("ha_get_state"))
+    }
+
+    @Test
+    fun `expliciete server-annotaties readOnlyHint=false en destructiveHint wegen zwaar`() {
+        assertEquals(ToolAccess.WRITE, classifier.classify(tool("GetSomething", jsonOf("readOnlyHint" to false))).access)
+        assertEquals(ToolAccess.WRITE, classifier.classify(tool("ha_list_x", jsonOf("destructiveHint" to true))).access)
+        assertEquals(ToolAccess.READ, classifier.classify(tool("HassNevermind", jsonOf("readOnlyHint" to true))).access)
+    }
+
+    @Test
     fun `onbekende tools zijn uit voorzorg schrijven`() {
         assertEquals(ToolAccess.WRITE, access("ha_frobnicate"))
     }

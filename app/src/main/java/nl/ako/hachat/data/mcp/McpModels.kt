@@ -12,7 +12,13 @@ data class McpTool(
     val annotations: JsonObject? = null,
 )
 
-data class McpServerInfo(val name: String, val version: String?, val protocolVersion: String)
+data class McpServerInfo(
+    val name: String,
+    val version: String?,
+    val protocolVersion: String,
+    /** Instructies van de server (initialize.instructions en/of MCP-prompts), voor de system prompt. */
+    val instructions: String? = null,
+)
 
 /** Resultaat van tools/call, omgezet naar wat Claude nodig heeft. */
 data class McpToolResult(
@@ -23,7 +29,15 @@ data class McpToolResult(
     val displayText: String,
 )
 
-data class McpConfig(val url: String, val headerName: String?, val headerValue: String?)
+data class McpConfig(
+    val url: String,
+    val headerName: String?,
+    val headerValue: String?,
+    /** Home Assistant long-lived access token → `Authorization: Bearer …`. */
+    val bearerToken: String? = null,
+) {
+    override fun toString() = "McpConfig(url=•••, header=${headerName ?: "-"}, token=${if (bearerToken != null) "set" else "unset"})"
+}
 
 /** Fouten met Nederlandse uitleg. */
 sealed class McpException(message: String, cause: Throwable? = null) : java.io.IOException(message, cause) {
@@ -33,8 +47,10 @@ sealed class McpException(message: String, cause: Throwable? = null) : java.io.I
     )
     class Http(code: Int, detail: String) : McpException(
         when (code) {
-            401, 403 -> "MCP-server weigert toegang ($code). Klopt de URL/het geheime pad of de extra header?"
-            404 -> "MCP-endpoint niet gevonden (404). Klopt het pad /private_… in de URL?"
+            401 -> "Home Assistant weigert toegang (401): ontbreekt het access token of is het ongeldig/ingetrokken?"
+            403 -> "Home Assistant weigert toegang (403): het MCP-endpoint vereist een beheerder-account. Maak het token aan als beheerder, of zet 'Require an administrator account' uit."
+            404 -> "MCP-endpoint niet gevonden (404). Is de integratie 'Model Context Protocol' ingeschakeld en klopt het pad (/api/mcp)?"
+            400 -> "MCP-server weigert het verzoek (400): $detail"
             else -> "MCP-server gaf HTTP $code: $detail"
         },
     )

@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import nl.ako.hachat.core.Redaction
@@ -32,7 +33,7 @@ sealed interface TaskState {
     data class Failed(val message: String) : TaskState
 }
 
-data class SecretHints(val apiKey: String?, val mcpUrl: String?, val mcpHeader: String?)
+data class SecretHints(val apiKey: String?, val mcpUrl: String?, val mcpHeader: String?, val haToken: String? = null)
 
 data class ToolRow(val tool: McpTool, val classification: Classification, val override: ToolOverride)
 
@@ -49,6 +50,8 @@ data class SettingsUiState(
 interface SettingsActions {
     fun update(block: (AppSettings) -> AppSettings)
     fun saveApiKey(key: String)
+    fun saveHaToken(token: String)
+    fun clearHaToken()
     fun clearApiKey()
     fun refreshModels()
     fun saveMcp(url: String?, headerName: String, headerValue: String?)
@@ -71,11 +74,12 @@ class SettingsViewModel @Inject constructor(
     private val modelsTask = MutableStateFlow<TaskState>(TaskState.Idle)
     private val testTask = MutableStateFlow<TaskState>(TaskState.Idle)
 
-    private val hints = repo.secrets.combine(repo.secretPresence) { s, _ ->
+    private val hints = repo.secrets.map { s ->
         SecretHints(
             apiKey = s.apiKey?.let { "${it.take(7)}…" },
             mcpUrl = s.mcpUrl?.let { Redaction.url(it) },
             mcpHeader = s.mcpHeaderValue?.let { "•••••• (${it.length} tekens)" },
+            haToken = s.haToken?.let { "•••••• (${it.length} tekens)" },
         )
     }
 
@@ -95,6 +99,15 @@ class SettingsViewModel @Inject constructor(
         repo.setApiKey(k)
         refreshModels()
     } }
+
+    override fun saveHaToken(token: String) { viewModelScope.launch {
+        if (token.isBlank()) return@launch
+        repo.setHaToken(token)
+        mcp.reconfigure()
+        mcp.refresh(force = true)
+    } }
+
+    override fun clearHaToken() { viewModelScope.launch { repo.setHaToken(null); mcp.reconfigure() } }
 
     override fun clearApiKey() { viewModelScope.launch { repo.setApiKey(null) } }
 
@@ -134,7 +147,7 @@ class SettingsViewModel @Inject constructor(
         val saved = repo.currentSecrets()
         val u = url.trim().ifEmpty { saved.mcpUrl.orEmpty() }
         if (u.isEmpty()) { testTask.value = TaskState.Failed("Vul eerst een URL in."); return@launch }
-        val cfg = McpConfig(u, headerName.trim().ifEmpty { repo.current().mcpHeaderName }, headerValue.trim().ifEmpty { saved.mcpHeaderValue })
+        val cfg = McpConfig(u, headerName.trim().ifEmpty { repo.current().mcpHeaderName }, headerValue.trim().ifEmpty { saved.mcpHeaderValue }, saved.haToken)
         val s = repo.current()
         testTask.value = mcp.test(cfg).fold(
             onSuccess = { (info, tools) ->
@@ -142,10 +155,11 @@ class SettingsViewModel @Inject constructor(
                 val writes = tools.count { c.classify(it).access == ToolAccess.WRITE }
                 TaskState.Ok(
                     "Verbonden met ${info.name}${info.version?.let { " $it" } ?: ""} — ${tools.size} tools " +
-                        "(${tools.size - writes} lezen, $writes schrijven)",
+                        "(${tools.size - writes} lezen, $writes schrijven)" +
+                        (if (info.instructions != null) " + instructies" else ""),
                 )
             },
-            onFailure = { TaskState.Failed(Redaction.scrub(it.message ?: "Onbekende fout", u, cfg.headerValue)) },
+            onFailure = { TaskState.Failed(Redaction.scrub(it.message ?: "Onbekende fout", u, cfg.headerValue, cfg.bearerToken)) },
         )
     } }
 

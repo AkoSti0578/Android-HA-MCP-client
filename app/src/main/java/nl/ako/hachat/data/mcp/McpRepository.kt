@@ -33,7 +33,7 @@ class McpRepository(
     private suspend fun currentConfig(): McpConfig? {
         val s = settings.currentSecrets()
         val url = s.mcpUrl ?: return null
-        return McpConfig(url, settings.current().mcpHeaderName, s.mcpHeaderValue)
+        return McpConfig(url, settings.current().mcpHeaderName, s.mcpHeaderValue, s.haToken)
     }
 
     /** (Her)verbinden en toollijst ophalen. */

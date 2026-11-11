@@ -7,7 +7,12 @@ object Redaction {
     /** "http://192.168.1.5:9583/private_abc123" -> "http://192.168.1.5:9583/…" */
     fun url(raw: String): String {
         val u = raw.trim().toHttpUrlOrNull() ?: return "(ongeldige URL)"
-        val path = if (u.encodedPath.length > 1) "/…" else ""
+        // Home Assistant-paden (/api/mcp, /api/mcp/assist) zijn niet geheim; een ha-mcp /private_… pad wel.
+        val path = when {
+            u.encodedPath.startsWith("/api/mcp") -> u.encodedPath
+            u.encodedPath.length > 1 -> "/…"
+            else -> ""
+        }
         return "${u.scheme}://${u.host}:${u.port}$path"
     }
 

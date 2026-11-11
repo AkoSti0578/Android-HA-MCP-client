@@ -3,7 +3,7 @@
   Netwerkbeleid van AKO HA Chat.
 
   Android's network_security_config kan geen IP-ranges uitdrukken (alleen hostnamen),
-  terwijl de MCP-server op een willekeurig LAN/VPN-adres staat (http://<ip>:9583/...).
+  terwijl de MCP-server op een willekeurig LAN/VPN-adres staat (bv. http://<ip>:8123/api/mcp).
   Daarom twee lagen:
    1. Hier: cleartext is op basisniveau toegestaan, maar Anthropic (en alle *.anthropic.com)
       is expliciet HTTPS-only en alleen systeem-CA's worden vertrouwd (geen user-CA's).
